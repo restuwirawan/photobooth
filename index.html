@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photobooth — Foto Instan dari Kamera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Caveat:wght@700&family=Baloo+2:wght@700&family=Bangers&family=Sacramento&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110f;
+    --surface:#1f1b17;
+    --surface-2:#2a2420;
+    --line:#3a322c;
+    --accent:#ff5a36;
+    --accent-2:#ffd23f;
+    --text:#f3ece2;
+    --muted:#9c9187;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Mono',monospace;
+    min-height:100vh;
+    padding:28px 18px 60px;
+  }
+  .app{max-width:1080px;margin:0 auto;}
+
+  .topbar{text-align:center;margin-bottom:26px;}
+  .eyebrow{
+    display:inline-block;
+    font-size:11px;
+    letter-spacing:.18em;
+    color:var(--accent-2);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:4px 12px;
+    margin-bottom:14px;
+  }
+  .topbar h1{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:clamp(40px,8vw,72px);
+    letter-spacing:.03em;
+    margin:0;
+    line-height:1;
+  }
+  .topbar h1 .dot{color:var(--accent);}
+  .topbar .sub{color:var(--muted);font-size:13px;margin-top:10px;}
+
+  .banner{
+    max-width:560px;margin:0 auto 18px;
+    background:#3a1f17;border:1px solid #6b2f1d;color:#ffd3c4;
+    padding:12px 16px;border-radius:10px;font-size:13px;text-align:center;
+  }
+  .banner.hidden{display:none;}
+
+  .stage{
+    display:grid;
+    grid-template-columns:1.15fr .85fr;
+    gap:22px;
+    align-items:start;
+  }
+  @media (max-width:760px){
+    .stage{grid-template-columns:1fr;}
+  }
+
+  .booth, .result{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+  }
+
+  /* ---- Viewfinder ---- */
+  .viewfinder{
+    position:relative;
+    background:#000;
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .sprockets{
+    height:14px;
+    background-color:#000;
+    background-image:radial-gradient(circle, var(--surface) 3px, transparent 3.4px);
+    background-size:22px 14px;
+    background-position:8px center;
+  }
+  #viewCanvas{
+    display:block;
+    width:100%;
+    height:auto;
+    background:#050505;
+  }
+  #viewCanvas.mirror{transform:scaleX(-1);}
+  .flash{
+    position:absolute;inset:0;
+    background:#fff;opacity:0;
+    pointer-events:none;
+    transition:opacity .12s ease-out;
+  }
+  .flash.on{opacity:.9;}
+  .countdown{
+    position:absolute;top:0;left:0;right:0;bottom:0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Bebas Neue',sans-serif;
+    font-size:120px;
+    color:#fff;
+    text-shadow:0 0 30px rgba(0,0,0,.6);
+    opacity:0;
+    transform:scale(.7);
+    transition:opacity .25s ease, transform .25s ease;
+    pointer-events:none;
+  }
+  .countdown.show{opacity:1;transform:scale(1);}
+
+  .controls{margin-top:16px;}
+  .row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .label-mini{
+    font-size:11px;color:var(--muted);letter-spacing:.06em;
+    margin:0 0 6px;text-transform:uppercase;
+  }
+  .filters, .themes{
+    overflow-x:auto;
+    padding-bottom:4px;
+    scrollbar-width:thin;
+  }
+  .chip{
+    flex:0 0 auto;
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    background:none;border:none;color:var(--muted);
+    font-family:'Space Mono',monospace;font-size:11px;
+    cursor:pointer;padding:4px 2px;
+  }
+  .chip .swatch{
+    width:36px;height:36px;border-radius:50%;
+    border:2px solid transparent;display:block;
+  }
+  .chip.active{color:var(--text);}
+  .chip.active .swatch{border-color:var(--accent);}
+
+  /* filter dasar */
+  .swatch-normal{background:linear-gradient(135deg,#bcb3a4,#6b6157);}
+  .swatch-bw{background:linear-gradient(135deg,#fff,#222);}
+  .swatch-sepia{background:linear-gradient(135deg,#caa472,#5a3c1f);}
+  .swatch-vintage{background:linear-gradient(135deg,#d9b48f,#4a2f1a);}
+  .swatch-vivid{background:linear-gradient(135deg,#ff5a36,#ffd23f,#36d1ff);}
+  .swatch-cool{background:linear-gradient(135deg,#a8d8ff,#1c4f7a);}
+  .swatch-warm{background:linear-gradient(135deg,#ffcf8a,#9a3b14);}
+  .swatch-invert{background:linear-gradient(135deg,#fff,#000,#fff);}
+
+  /* filter estetik (gaya Instagram) */
+  .swatch-fade{background:linear-gradient(135deg,#e8ddcf,#b9ab97);}
+  .swatch-tealorange{background:linear-gradient(135deg,#1c6e6e,#e0793c);}
+  .swatch-golden{background:linear-gradient(135deg,#ffd27a,#a85d1d);}
+  .swatch-moodybw{background:linear-gradient(135deg,#cfcfcf,#101010);}
+  .swatch-pasteldream{background:linear-gradient(135deg,#ffd6e0,#cdb8ff);}
+  .swatch-matte{background:linear-gradient(135deg,#9aa6a1,#3c4642);}
+
+  /* tema strip */
+  .swatch-classic{background:linear-gradient(135deg,#fdfaf3,#ddd6c8);}
+  .swatch-film{background:linear-gradient(135deg,#3a3a3a,#000);}
+  .swatch-toybox{background:linear-gradient(135deg,#ff5a36,#ffd23f,#36b9ff);}
+  .swatch-sma{background:linear-gradient(90deg,#e1574f 0 18%,#fbf6e9 18% 100%);}
+  .swatch-pastel{background:linear-gradient(135deg,#ffd6e8,#d6c6ff,#c6f0ff);}
+  .swatch-comic{background:radial-gradient(circle,#000 2px,transparent 2.4px) 0 0/8px 8px,#ffe14d;}
+  .swatch-romantic{background:linear-gradient(135deg,#7a1f33,#caa45c);}
+
+  .toggles{flex-wrap:wrap;}
+  .segmented{
+    display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;
+  }
+  .segmented button{
+    background:none;border:none;color:var(--muted);
+    font-family:'Space Mono',monospace;font-size:12px;
+    padding:8px 14px;cursor:pointer;
+  }
+  .segmented button.active{background:var(--accent);color:#1a0f0a;}
+  .icon-btn{
+    margin-left:auto;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+    width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:16px;
+  }
+
+  .shutter{
+    display:block;margin:18px auto 6px;
+    width:78px;height:78px;border-radius:50%;
+    background:var(--accent);border:4px solid var(--accent-2);
+    cursor:pointer;
+    transition:transform .1s ease;
+  }
+  .shutter:active{transform:scale(.93);}
+  .shutter:disabled{opacity:.5;cursor:not-allowed;}
+  .shutter-inner{
+    display:block;width:100%;height:100%;border-radius:50%;
+    border:2px solid rgba(0,0,0,.25);
+  }
+  .status-msg{
+    text-align:center;color:var(--accent-2);font-size:12px;min-height:16px;margin-top:8px;
+  }
+
+  /* ---- Result ---- */
+  .result{display:flex;flex-direction:column;min-height:320px;}
+  .result-empty{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);text-align:center;font-size:13px;border:1px dashed var(--line);
+    border-radius:10px;
+  }
+  .result-filled.hidden, .result-empty.hidden{display:none;}
+  .result-filled{display:flex;flex-direction:column;gap:14px;}
+  .strip-frame{
+    background:var(--surface-2);padding:8px 8px 16px;border-radius:6px;
+    clip-path:polygon(0% 0%,100% 0%,100% 95%,94% 100%,88% 95%,82% 100%,76% 95%,70% 100%,64% 95%,58% 100%,52% 95%,46% 100%,40% 95%,34% 100%,28% 95%,22% 100%,16% 95%,10% 100%,4% 95%,0% 100%);
+  }
+  #resultImg{display:block;width:100%;border-radius:2px;}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;}
+  .actions button{
+    flex:1 1 auto;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+    font-family:'Space Mono',monospace;font-size:12px;
+    padding:10px 8px;border-radius:8px;cursor:pointer;
+  }
+  .actions button:hover{border-color:var(--accent);}
+  .actions button.ghost{background:none;}
+  .hint{font-size:11px;color:var(--muted);min-height:14px;margin:0;}
+
+  .foot{max-width:1080px;margin:30px auto 0;text-align:center;color:var(--muted);font-size:11px;}
+
+  button:focus-visible, .chip:focus-visible{
+    outline:2px solid var(--accent-2);outline-offset:2px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .countdown, .flash, .shutter{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="eyebrow">FOTO INSTAN • LIVE DARI KAMERA</span>
+    <h1>PHOTOBOOTH<span class="dot">.</span></h1>
+    <p class="sub">Nyalakan kamera, pilih filter estetik &amp; tema strip, jepret, lalu langsung bagikan.</p>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main class="stage">
+    <section class="booth">
+      <div class="viewfinder" id="viewfinderWrap">
+        <div class="sprockets"></div>
+        <canvas id="viewCanvas"></canvas>
+        <div class="flash" id="flash"></div>
+        <div class="countdown" id="countdownEl"></div>
+      </div>
+      <video id="video" autoplay playsinline muted style="display:none"></video>
+
+      <div class="controls">
+        <p class="label-mini">Filter</p>
+        <div class="row filters" id="filterRow"></div>
+
+        <p class="label-mini">Tema Strip</p>
+        <div class="row themes" id="themeRow"></div>
+
+        <div class="row toggles">
+          <div class="segmented" id="modeSeg">
+            <button data-mode="single" class="active">Single</button>
+            <button data-mode="strip">Strip ×3</button>
+            <button data-mode="grid">Grid 2×2</button>
+          </div>
+          <button id="switchCamBtn" class="icon-btn" title="Ganti kamera" hidden>⟳</button>
+        </div>
+
+        <button id="shutterBtn" class="shutter" aria-label="Ambil foto">
+          <span class="shutter-inner"></span>
+        </button>
+        <p class="status-msg" id="statusMsg"></p>
+      </div>
+    </section>
+
+    <section class="result" id="resultPanel">
+      <div class="result-empty" id="resultEmpty">
+        <p>Hasil fotomu<br>akan muncul di sini</p>
+      </div>
+      <div class="result-filled hidden" id="resultFilled">
+        <div class="strip-frame">
+          <img id="resultImg" alt="Hasil foto photobooth" />
+        </div>
+        <div class="actions">
+          <button id="downloadBtn">⬇ Download</button>
+          <button id="shareBtn">↗ Share</button>
+          <button id="copyBtn">⧉ Copy</button>
+          <button id="retakeBtn" class="ghost">↺ Ambil Ulang</button>
+        </div>
+        <p class="hint" id="shareHint"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Butuh izin kamera + koneksi HTTPS atau localhost. Tombol Share paling stabil di Chrome/Safari versi mobile (membuka menu share bawaan device, termasuk Instagram/WhatsApp/dll).</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Elements ----------
+  const video        = document.getElementById('video');
+  const viewCanvas    = document.getElementById('viewCanvas');
+  const pctx          = viewCanvas.getContext('2d', { willReadFrequently:true });
+  const flashEl       = document.getElementById('flash');
+  const countdownEl   = document.getElementById('countdownEl');
+  const bannerEl      = document.getElementById('banner');
+  const filterRow     = document.getElementById('filterRow');
+  const themeRow      = document.getElementById('themeRow');
+  const modeSeg       = document.getElementById('modeSeg');
+  const switchCamBtn  = document.getElementById('switchCamBtn');
+  const shutterBtn    = document.getElementById('shutterBtn');
+  const statusMsg     = document.getElementById('statusMsg');
+  const resultEmpty   = document.getElementById('resultEmpty');
+  const resultFilled  = document.getElementById('resultFilled');
+  const resultImg     = document.getElementById('resultImg');
+  const downloadBtn   = document.getElementById('downloadBtn');
+  const shareBtn      = document.getElementById('shareBtn');
+  const copyBtn       = document.getElementById('copyBtn');
+  const retakeBtn     = document.getElementById('retakeBtn');
+  const shareHint      = document.getElementById('shareHint');
+
+  // ---------- State ----------
+  let stream = null;
+  let currentFacing = 'user';
+  let currentFilter = 'normal';
+  let currentMode = 'single';   // 'single' | 'strip' | 'grid'
+  let currentTheme = 'classic'; // lihat THEMES di bawah
+  let isCapturing = false;
+  let rafId = null;
+  let resultCanvas = null;
+  let resultBlob = null;
+
+  const FILTERS = [
+    { id:'normal',      label:'Normal' },
+    { id:'bw',          label:'Hitam Putih' },
+    { id:'sepia',       label:'Sepia' },
+    { id:'vintage',     label:'Vintage' },
+    { id:'vivid',       label:'Vivid' },
+    { id:'cool',        label:'Cool' },
+    { id:'warm',        label:'Warm' },
+    { id:'invert',      label:'Negatif' },
+    // -- filter estetik gaya Instagram --
+    { id:'fade',        label:'Soft Fade' },
+    { id:'tealorange',  label:'Teal & Orange' },
+    { id:'golden',      label:'Golden Hour' },
+    { id:'moodybw',     label:'Moody B&W' },
+    { id:'pasteldream', label:'Pastel Dream' },
+    { id:'matte',       label:'Matte Film' },
+  ];
+
+  // Tema strip — semua dekorasi dibuat original (bentuk, emoji generik, font),
+  // bukan reproduksi karakter/IP berhak cipta milik pihak lain.
+  const THEMES = [
+    { id:'classic',  label:'Classic' },
+    { id:'film',     label:'Film Strip' },
+    { id:'toybox',   label:'Mainan Lucu' },
+    { id:'sma',      label:'Surat Cinta SMA' },
+    { id:'pastel',   label:'Pastel Comel' },
+    { id:'comic',    label:'Komik Pop' },
+    { id:'romantic', label:'Romantis' },
+  ];
+
+  // preload custom font supaya siap saat dipakai di canvas (di luar DOM teks biasa)
+  const CUSTOM_FONTS = ['700 16px "Caveat"', '700 16px "Baloo 2"', '16px "Bangers"', '16px "Sacramento"'];
+  function preloadFonts(){
+    if (!document.fonts) return;
+    CUSTOM_FONTS.forEach(f => { document.fonts.load(f).catch(() => {}); });
+  }
+  preloadFonts();
+
+  // =========================================================
+  // 1. ALGORITMA PENGOLAHAN GAMBAR (per-pixel, manual, tanpa CSS filter)
+  // =========================================================
+  function clamp(v){ return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+  function applyFilter(imageData, type, opts){
+    opts = opts || {};
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4){
+      let r = data[i], g = data[i+1], b = data[i+2];
+      switch(type){
+        case 'bw': {
+          const gray = 0.299*r + 0.587*g + 0.114*b;
+          r = g = b = gray;
+          break;
+        }
+        case 'sepia': {
+          const tr = 0.393*r + 0.769*g + 0.189*b;
+          const tg = 0.349*r + 0.686*g + 0.168*b;
+          const tb = 0.272*r + 0.534*g + 0.131*b;
+          r = tr; g = tg; b = tb;
+          break;
+        }
+        case 'vintage': {
+          const tr = 0.393*r + 0.769*g + 0.189*b;
+          const tg = 0.349*r + 0.686*g + 0.168*b;
+          const tb = 0.272*r + 0.534*g + 0.131*b;
+          r = tr*0.92 + 8; g = tg*0.88 + 4; b = tb*0.8;
+          break;
+        }
+        case 'invert': {
+          r = 255 - r; g = 255 - g; b = 255 - b;
+          break;
+        }
+        case 'cool': {
+          r = r*0.85; g = g*1.0; b = b*1.25 + 8;
+          break;
+        }
+        case 'warm': {
+          r = r*1.2 + 8; g = g*1.05; b = b*0.8;
+          break;
+        }
+        case 'vivid': {
+          const avg = (r+g+b)/3;
+          const amt = 1.55;
+          r = avg + (r-avg)*amt;
+          g = avg + (g-avg)*amt;
+          b = avg + (b-avg)*amt;
+          break;
+        }
+        case 'fade': {
+          // matte/faded: kontras ditekan + sedikit hangat -> khas estetik "soft"
+          r = (r-128)*0.82+128; g = (g-128)*0.82+128; b = (b-128)*0.82+128;
+          r = r*0.97+18; g = g*0.97+14; b = b*0.97+10;
+          break;
+        }
+        case 'tealorange': {
+          // split-tone sinematik: shadow -> teal, highlight -> orange
+          const lum = (0.299*r+0.587*g+0.114*b)/255;
+          const shadowAmt = 1 - lum;
+          r = r + shadowAmt*(-10) + lum*18;
+          g = g + shadowAmt*4 + lum*4;
+          b = b + shadowAmt*16 + lum*(-14);
+          break;
+        }
+        case 'golden': {
+          r = r*1.15+12; g = g*1.06+4; b = b*0.82;
+          break;
+        }
+        case 'moodybw': {
+          let gray = 0.299*r + 0.587*g + 0.114*b;
+          gray = ((gray/255 - 0.5)*1.35 + 0.5)*255; // S-curve, kontras lebih tegas
+          gray = gray*0.92; // sedikit lebih gelap/moody
+          r = g = b = gray;
+          break;
+        }
+        case 'pasteldream': {
+          const avg = (r+g+b)/3;
+          r = avg + (r-avg)*0.7; g = avg + (g-avg)*0.7; b = avg + (b-avg)*0.7;
+          r = r*0.92+30; g = g*0.92+22; b = b*0.92+34;
+          break;
+        }
+        case 'matte': {
+          r = (r-128)*0.88+128; g = (g-128)*0.88+128; b = (b-128)*0.88+128;
+          r = r*0.95+12; g = g*0.97+12; b = b*0.97+16;
+          break;
+        }
+        default: break;
+      }
+      data[i]   = clamp(r);
+      data[i+1] = clamp(g);
+      data[i+2] = clamp(b);
+    }
+    if (opts.full){
+      if (type === 'vintage') addVignetteGrain(imageData);
+      else if (type === 'matte') addVignetteGrain(imageData, { vig:0.3, grain:10 });
+    }
+  }
+
+  function addVignetteGrain(imageData, opts){
+    opts = opts || {};
+    const vigAmt = opts.vig !== undefined ? opts.vig : 0.5;
+    const grainAmt = opts.grain !== undefined ? opts.grain : 16;
+    const data = imageData.data, w = imageData.width, h = imageData.height;
+    const cx = w/2, cy = h/2, maxDist = Math.sqrt(cx*cx + cy*cy);
+    for (let y = 0; y < h; y++){
+      for (let x = 0; x < w; x++){
+        const idx = (y*w + x) * 4;
+        const dist = Math.sqrt((x-cx)*(x-cx) + (y-cy)*(y-cy)) / maxDist;
+        const vig = 1 - dist*vigAmt;
+        const noise = (Math.random() - 0.5) * grainAmt;
+        data[idx]   = clamp(data[idx]   * vig + noise);
+        data[idx+1] = clamp(data[idx+1] * vig + noise);
+        data[idx+2] = clamp(data[idx+2] * vig + noise);
+      }
+    }
+  }
+
+  // =========================================================
+  // 2. KONEKSI KE KAMERA DEVICE
+  // =========================================================
+  async function startCamera(facing){
+    facing = facing || 'user';
+    stopCamera();
+    try{
+      const constraints = {
+        video: { facingMode: facing, width:{ ideal:1280 }, height:{ ideal:960 } },
+        audio: false
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      currentFacing = facing;
+      viewCanvas.classList.toggle('mirror', facing === 'user');
+      hideBanner();
+      video.onloadedmetadata = () => {
+        const ratio = video.videoHeight / video.videoWidth;
+        viewCanvas.width = 480;
+        viewCanvas.height = Math.round(480 * ratio);
+      };
+      if (!rafId) renderLoop();
+      checkMultipleCameras();
+    } catch(err){
+      handleCameraError(err);
+    }
+  }
+
+  function stopCamera(){
+    if (stream){
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+  }
+
+  async function checkMultipleCameras(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      switchCamBtn.hidden = cams.length < 2;
+    }catch(e){ /* abaikan */ }
+  }
+
+  function handleCameraError(err){
+    let msg = 'Tidak bisa mengakses kamera.';
+    if (err && err.name === 'NotAllowedError') msg = 'Izin kamera ditolak. Izinkan akses kamera di browser, lalu muat ulang halaman.';
+    else if (err && err.name === 'NotFoundError') msg = 'Kamera tidak ditemukan di device ini.';
+    else if (err && err.name === 'NotReadableError') msg = 'Kamera sedang dipakai aplikasi lain.';
+    else if (err && err.name === 'OverconstrainedError') msg = 'Konfigurasi kamera tidak didukung di device ini.';
+    showBanner(msg);
+  }
+
+  function showBanner(msg){ bannerEl.textContent = msg; bannerEl.classList.remove('hidden'); }
+  function hideBanner(){ bannerEl.classList.add('hidden'); }
+
+  // =========================================================
+  // 3. RENDER LOOP — preview kamera + filter real-time di canvas
+  // =========================================================
+  function renderLoop(){
+    if (video.readyState >= 2 && viewCanvas.width > 0){
+      pctx.drawImage(video, 0, 0, viewCanvas.width, viewCanvas.height);
+      if (currentFilter !== 'normal'){
+        const frame = pctx.getImageData(0, 0, viewCanvas.width, viewCanvas.height);
+        applyFilter(frame, currentFilter, { full:false });
+        pctx.putImageData(frame, 0, 0);
+      }
+    }
+    rafId = requestAnimationFrame(renderLoop);
+  }
+
+  // =========================================================
+  // 4. SISTEM CAPTURE — countdown, flash, ambil frame resolusi penuh
+  // =========================================================
+  function countdown(seconds){
+    return new Promise(resolve => {
+      let n = seconds;
+      const show = (val) => {
+        countdownEl.textContent = val;
+        countdownEl.classList.remove('show');
+        requestAnimationFrame(() => countdownEl.classList.add('show'));
+      };
+      show(n);
+      const tick = () => {
+        n--;
+        if (n > 0){
+          show(n);
+          setTimeout(tick, 1000);
+        } else {
+          countdownEl.classList.remove('show');
+          resolve();
+        }
+      };
+      setTimeout(tick, 1000);
+    });
+  }
+
+  function flashEffect(){
+    flashEl.classList.add('on');
+    setTimeout(() => flashEl.classList.remove('on'), 180);
+  }
+
+  function captureFullFrame(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const c = document.createElement('canvas');
+    c.width = vw; c.height = vh;
+    const cctx = c.getContext('2d');
+    if (currentFacing === 'user'){
+      cctx.translate(vw, 0);
+      cctx.scale(-1, 1);
+    }
+    cctx.drawImage(video, 0, 0, vw, vh);
+    if (currentFilter !== 'normal'){
+      const imgData = cctx.getImageData(0, 0, vw, vh);
+      applyFilter(imgData, currentFilter, { full:true });
+      cctx.putImageData(imgData, 0, 0);
+    }
+    return c;
+  }
+
+  shutterBtn.addEventListener('click', async () => {
+    if (isCapturing || !stream) return;
+    isCapturing = true;
+    shutterBtn.disabled = true;
+    const shots = currentMode === 'strip' ? 3 : (currentMode === 'grid' ? 4 : 1);
+    const frames = [];
+    for (let i = 0; i < shots; i++){
+      await countdown(3);
+      flashEffect();
+      await new Promise(r => setTimeout(r, 90));
+      frames.push(captureFullFrame());
+      if (i < shots - 1){
+        statusMsg.textContent = 'Siap-siap untuk foto berikutnya…';
+        await new Promise(r => setTimeout(r, 1000));
+        statusMsg.textContent = '';
+      }
+    }
+    try{ await document.fonts.ready; }catch(e){ /* abaikan */ }
+    const finalCanvas = composeResult(frames, currentTheme, currentMode);
+    showResult(finalCanvas);
+    isCapturing = false;
+    shutterBtn.disabled = false;
+  });
+
+  // =========================================================
+  // 5. SISTEM LAYOUT — strip vertikal (single/strip×3) atau grid 2×2
+  // =========================================================
+  function computeLayout(frames, mode){
+    const frameW = frames[0].width, frameH = frames[0].height;
+    const pad = 30, gap = 16, footerH = 78;
+    const positions = [];
+    let stripW, stripH;
+
+    if (mode === 'grid'){
+      const cols = 2;
+      const rows = Math.ceil(frames.length / cols);
+      stripW = pad*2 + frameW*cols + gap*(cols-1);
+      stripH = pad*2 + frameH*rows + gap*(rows-1) + footerH;
+      frames.forEach((f, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        positions.push({ x: pad + col*(frameW+gap), y: pad + row*(frameH+gap) });
+      });
+    } else {
+      stripW = pad*2 + frameW;
+      stripH = pad + frames.length*frameH + (frames.length-1)*gap + pad + footerH;
+      let y = pad;
+      frames.forEach(() => { positions.push({ x: pad, y }); y += frameH + gap; });
+    }
+    return { frameW, frameH, pad, gap, footerH, stripW, stripH, positions, bodyBottom: stripH - footerH };
+  }
+
+  // =========================================================
+  // 6. SISTEM PENYUSUNAN HASIL + DEKORASI TEMA
+  // =========================================================
+  function roundRectPath(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  function drawTape(ctx, x, y, w, color, angleDeg){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angleDeg * Math.PI / 180);
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = color;
+    ctx.fillRect(-w/2, -9, w, 18);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawBokeh(ctx, x, y, r, color){
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function composeResult(frames, theme, mode){
+    const L = computeLayout(frames, mode);
+    const { frameW, frameH, pad, stripW, stripH, positions, bodyBottom } = L;
+
+    const out = document.createElement('canvas');
+    out.width = stripW; out.height = stripH;
+    const ctx = out.getContext('2d');
+
+    const bgColors = {
+      classic:'#fdfaf3', film:'#111111', toybox:'#fff4dd',
+      sma:'#fbf6e9', pastel:'#ffeef6', comic:'#ffe14d', romantic:'#3b0d18'
+    };
+    ctx.fillStyle = bgColors[theme] || '#fdfaf3';
+    ctx.fillRect(0, 0, stripW, stripH);
+
+    // ---- tekstur latar khusus tema (sebelum foto digambar) ----
+    if (theme === 'sma'){
+      ctx.strokeStyle = '#cfe3f7'; ctx.lineWidth = 1;
+      for (let ly = 20; ly < bodyBottom; ly += 26){
+        ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(stripW, ly); ctx.stroke();
+      }
+      ctx.strokeStyle = '#e1574f'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(26, bodyBottom); ctx.stroke();
+    } else if (theme === 'comic'){
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      for (let dy = 6; dy < bodyBottom; dy += 10){
+        for (let dx = 6; dx < stripW; dx += 10){
+          ctx.beginPath(); ctx.arc(dx, dy, 1.4, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    } else if (theme === 'pastel'){
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      for (let i = 0; i < 40; i++){
+        const x = Math.random()*stripW, y = Math.random()*bodyBottom;
+        ctx.beginPath(); ctx.arc(x, y, Math.random()*2+1, 0, Math.PI*2); ctx.fill();
+      }
+    } else if (theme === 'romantic'){
+      const grad = ctx.createLinearGradient(0, 0, 0, bodyBottom);
+      grad.addColorStop(0, '#3b0d18');
+      grad.addColorStop(1, '#7a1f33');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, stripW, bodyBottom);
+      for (let i = 0; i < 12; i++){
+        const x = Math.random()*stripW, y = Math.random()*bodyBottom, r = 14 + Math.random()*26;
+        const warm = Math.random() > 0.5;
+        drawBokeh(ctx, x, y, r, warm ? 'rgba(255,209,128,0.35)' : 'rgba(255,140,170,0.3)');
+      }
+    }
+
+    // ---- gambar tiap foto sesuai posisi layout ----
+    const rounded = (theme === 'pastel' || theme === 'toybox' || theme === 'romantic');
+    frames.forEach((f, i) => {
+      const p = positions[i];
+      if (rounded){
+        ctx.save();
+        roundRectPath(ctx, p.x, p.y, frameW, frameH, 18);
+        ctx.clip();
+        ctx.drawImage(f, p.x, p.y, frameW, frameH);
+        ctx.restore();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = theme === 'pastel' ? '#ffffff' : (theme === 'romantic' ? '#caa45c' : '#1f1b17');
+        roundRectPath(ctx, p.x, p.y, frameW, frameH, 18);
+        ctx.stroke();
+      } else {
+        ctx.drawImage(f, p.x, p.y, frameW, frameH);
+        ctx.lineWidth = theme === 'comic' ? 6 : (theme === 'sma' ? 6 : 2);
+        ctx.strokeStyle = theme === 'film' ? '#444444' : (theme === 'comic' ? '#000000' : (theme === 'sma' ? '#ffffff' : '#ddd6c8'));
+        ctx.strokeRect(p.x, p.y, frameW, frameH);
+      }
+    });
+
+    decorateTheme(ctx, theme, stripW, bodyBottom, pad, frameW, frameH, positions);
+    drawFooter(ctx, theme, stripW, stripH, L.footerH);
+
+    return out;
+  }
+
+  function decorateTheme(ctx, theme, w, bodyBottom, pad, frameW, frameH, positions){
+    if (theme === 'toybox'){
+      ctx.setLineDash([8, 6]);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#ff5a36';
+      ctx.strokeRect(8, 8, w - 16, bodyBottom - 8);
+      ctx.setLineDash([]);
+      const stickers = ['⭐','🎈','🚗','🧸','🍭','🎲','🌈'];
+      ctx.font = '22px sans-serif';
+      positions.forEach((p, i) => {
+        ctx.textAlign = 'left';
+        ctx.fillText(stickers[i % stickers.length], p.x - 2, p.y + 24);
+        ctx.textAlign = 'right';
+        ctx.fillText(stickers[(i + 3) % stickers.length], p.x + frameW + 2, p.y + frameH - 4);
+      });
+    } else if (theme === 'sma'){
+      const tapeColors = ['#f2c14e', '#ff8fa3', '#9fd8cb'];
+      positions.forEach((p, i) => {
+        drawTape(ctx, p.x + frameW/2, p.y + 2, 70, tapeColors[i % tapeColors.length], (i % 2 === 0 ? -4 : 4));
+      });
+      ctx.font = '30px "Caveat", cursive';
+      ctx.fillStyle = '#e1574f';
+      ctx.textAlign = 'right';
+      ctx.fillText('❤', w - 22, 38);
+    } else if (theme === 'pastel'){
+      const deco = ['✨', '💖', '⭐', '🌸'];
+      ctx.font = '20px sans-serif'; ctx.textAlign = 'left';
+      positions.forEach((p, i) => {
+        ctx.fillText(deco[i % deco.length], p.x + 4, p.y + 22);
+      });
+    } else if (theme === 'romantic'){
+      const deco = ['❤️', '🌹', '💕'];
+      ctx.font = '20px sans-serif'; ctx.textAlign = 'right';
+      positions.forEach((p, i) => {
+        ctx.fillText(deco[i % deco.length], p.x + frameW - 4, p.y + 22);
+      });
+    } else if (theme === 'comic'){
+      ctx.save();
+      ctx.translate(w - 56, 46);
+      ctx.rotate(-0.15);
+      ctx.font = 'bold 22px "Bangers", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#000000';
+      ctx.fillStyle = '#ff5a36';
+      ctx.strokeText('JEPRET!', 0, 0);
+      ctx.fillText('JEPRET!', 0, 0);
+      ctx.restore();
+    } else if (theme === 'film'){
+      ctx.fillStyle = '#000000';
+      for (let sy = pad / 2; sy < bodyBottom; sy += 22){
+        ctx.beginPath(); ctx.arc(10, sy, 4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(w - 10, sy, 4, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    // tema 'classic' -> sengaja dibiarkan polos/minimal
+  }
+
+  function drawFooter(ctx, theme, w, h, footerH){
+    const textColors = {
+      classic:'#2a2420', film:'#f3ece2', toybox:'#1f1b17',
+      sma:'#2a2420', pastel:'#5c3a4a', comic:'#000000', romantic:'#ffe3c2'
+    };
+    let titleFont = '700 24px "Space Mono", monospace';
+    let title = 'PHOTOBOOTH';
+    let titleOffset = 38, tsOffset = 58;
+    if (theme === 'sma'){ titleFont = '700 36px "Caveat", cursive'; title = 'photobooth ku!'; }
+    if (theme === 'pastel'){ titleFont = '700 26px "Baloo 2", sans-serif'; title = 'Photobooth ✨'; }
+    if (theme === 'toybox'){ titleFont = '700 26px "Baloo 2", sans-serif'; title = 'PHOTOBOOTH!'; }
+    if (theme === 'comic'){ titleFont = '32px "Bangers", sans-serif'; title = 'PHOTOBOOTH'; }
+    if (theme === 'romantic'){ titleFont = '44px "Sacramento", cursive'; title = 'Dengan Cinta ♥'; titleOffset = 48; tsOffset = 68; }
+
+    if (theme === 'romantic'){
+      ctx.strokeStyle = 'rgba(232,184,109,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w*0.3, h-footerH+8);
+      ctx.lineTo(w*0.7, h-footerH+8);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = textColors[theme] || '#2a2420';
+    ctx.font = titleFont;
+    ctx.fillText(title, w/2, h - footerH + titleOffset);
+
+    ctx.font = '13px "Space Mono", monospace';
+    ctx.fillStyle = theme === 'film' ? '#9c9187' : (theme === 'romantic' ? 'rgba(255,227,194,0.7)' : '#7a7166');
+    const ts = new Date().toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' });
+    ctx.fillText(ts, w/2, h - footerH + tsOffset);
+  }
+
+  function showResult(canvas){
+    resultCanvas = canvas;
+    resultImg.src = canvas.toDataURL('image/png');
+    resultEmpty.classList.add('hidden');
+    resultFilled.classList.remove('hidden');
+    shareHint.textContent = '';
+    canvas.toBlob(blob => { resultBlob = blob; }, 'image/png');
+  }
+
+  // =========================================================
+  // 7. OUTPUT — download, share ke media sosial, copy
+  // =========================================================
+  downloadBtn.addEventListener('click', () => {
+    if (!resultCanvas) return;
+    const a = document.createElement('a');
+    a.href = resultCanvas.toDataURL('image/png');
+    a.download = `photobooth-${Date.now()}.png`;
+    a.click();
+  });
+
+  shareBtn.addEventListener('click', async () => {
+    if (!resultBlob) return;
+    const file = new File([resultBlob], `photobooth-${Date.now()}.png`, { type:'image/png' });
+    if (navigator.canShare && navigator.canShare({ files:[file] })){
+      try{
+        await navigator.share({ files:[file], title:'Photobooth', text:'Hasil foto dari Photobooth-ku!' });
+        shareHint.textContent = '';
+      }catch(err){
+        // pengguna membatalkan share -> tidak perlu pesan error
+      }
+    } else {
+      shareHint.textContent = 'Browser ini belum bisa share file langsung. Foto sudah ter-download — upload manual ke Instagram/WhatsApp/dll.';
+      downloadBtn.click();
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!resultBlob) return;
+    try{
+      await navigator.clipboard.write([ new ClipboardItem({ 'image/png': resultBlob }) ]);
+      shareHint.textContent = 'Foto disalin ke clipboard. Paste (Ctrl+V) di kolom chat atau posting media sosial.';
+    }catch(err){
+      shareHint.textContent = 'Copy ke clipboard tidak didukung browser ini. Gunakan tombol Download.';
+    }
+  });
+
+  retakeBtn.addEventListener('click', () => {
+    resultFilled.classList.add('hidden');
+    resultEmpty.classList.remove('hidden');
+    resultCanvas = null;
+    resultBlob = null;
+  });
+
+  switchCamBtn.addEventListener('click', () => {
+    startCamera(currentFacing === 'user' ? 'environment' : 'user');
+  });
+
+  // =========================================================
+  // 8. UI — filter chips, tema chips, segmented mode
+  // =========================================================
+  FILTERS.forEach(f => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip' + (f.id === 'normal' ? ' active' : '');
+    btn.innerHTML = `<span class="swatch swatch-${f.id}"></span>${f.label}`;
+    btn.addEventListener('click', () => {
+      filterRow.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = f.id;
+    });
+    filterRow.appendChild(btn);
+  });
+
+  THEMES.forEach(t => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip' + (t.id === 'classic' ? ' active' : '');
+    btn.innerHTML = `<span class="swatch swatch-${t.id}"></span>${t.label}`;
+    btn.addEventListener('click', () => {
+      themeRow.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      currentTheme = t.id;
+    });
+    themeRow.appendChild(btn);
+  });
+
+  modeSeg.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modeSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+    });
+  });
+
+  // =========================================================
+  // 9. START
+  // =========================================================
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showBanner('Browser ini tidak mendukung akses kamera, atau halaman tidak dibuka lewat HTTPS/localhost.');
+  } else {
+    startCamera('user');
+  }
+
+})();
+</script>
+</body>
+</html>
